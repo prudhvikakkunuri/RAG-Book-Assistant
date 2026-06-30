@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG Book Assistant — Chat With Your PDFs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0d1117;
+    --bg-panel: #161b22;
+    --line: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58e6c4;
+    --accent-2: #79c0ff;
+    --accent-glow: rgba(88,230,196,0.4);
+  }
+  *{ box-sizing: border-box; margin:0; padding:0; }
+  html{ scroll-behavior: smooth; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+  }
+  .mono{ font-family: 'JetBrains Mono', monospace; }
+  .wrap{ max-width: 1040px; margin: 0 auto; padding: 0 26px; }
+  a{ color: inherit; }
+
+  /* ---------- TITLE BAR (IDE window chrome) ---------- */
+  .titlebar{
+    background: #010409;
+    border-bottom: 1px solid var(--line);
+    padding: 9px 0;
+  }
+  .titlebar .wrap{ display:flex; align-items:center; gap: 8px; }
+  .titlebar .dots{ display:flex; gap: 6px; }
+  .titlebar .dots span{ width:10px; height:10px; border-radius:50%; }
+  .titlebar .dots span:nth-child(1){ background:#ff5f56; }
+  .titlebar .dots span:nth-child(2){ background:#ffbd2e; }
+  .titlebar .dots span:nth-child(3){ background:#27c93f; }
+  .titlebar .filename{ font-family:'JetBrains Mono'; font-size:12px; color: var(--text-dim); margin-left: 14px; }
+
+  /* ---------- NAV ---------- */
+  header{
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(13,17,23,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav{ display:flex; justify-content: space-between; align-items:center; padding: 14px 0; }
+  .brand{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:14px; font-family:'JetBrains Mono'; }
+  .brand .bracket{ color: var(--accent); }
+  .nav-links{ display:flex; gap: 4px; }
+  .nav-links a{
+    color: var(--text-dim); text-decoration:none; font-size:13px; font-family:'JetBrains Mono';
+    padding: 6px 12px; border-radius: 6px; transition: background .15s, color .15s;
+  }
+  .nav-links a:hover{ background: var(--bg-panel); color: var(--accent); }
+
+  /* ---------- HERO ---------- */
+  .hero{ padding: 80px 0 64px; }
+  .terminal{
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0;
+    max-width: 720px;
+    margin-bottom: 38px;
+    overflow:hidden;
+  }
+  .terminal-head{
+    display:flex; align-items:center; gap:8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+    font-family:'JetBrains Mono'; font-size: 11px; color: var(--text-dim);
+  }
+  .terminal-head .led{ width:7px; height:7px; border-radius:50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+  .terminal-body{ padding: 16px 18px; font-family:'JetBrains Mono'; font-size: 13px; }
+  .terminal-body .prompt{ color: var(--accent); }
+  .terminal-body .out{ color: var(--text-dim); margin-top: 6px; }
+
+  h1{
+    font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    line-height: 1.1; letter-spacing: -1px; max-width: 760px;
+  }
+  h1 .accent-text{ color: var(--accent); }
+  .lede{ margin-top: 22px; font-size: 17px; color: var(--text-dim); max-width: 560px; }
+  .cta-row{ display:flex; gap: 14px; margin-top: 34px; flex-wrap: wrap; }
+  .btn{
+    font-family:'JetBrains Mono'; font-size: 14px; font-weight:600; padding: 13px 22px;
+    border-radius: 8px; text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .btn-primary{
+    background: var(--accent); color: #04140f; font-weight: 700;
+    box-shadow: 0 0 22px -4px var(--accent-glow);
+  }
+  .btn-primary:hover{ transform: translateY(-2px); box-shadow: 0 0 32px -2px var(--accent-glow); }
+  .btn-secondary{ border: 1px solid var(--line); background: var(--bg-panel); color: var(--text); }
+  .btn-secondary:hover{ border-color: var(--accent); transform: translateY(-2px); }
+
+  .stack-row{ margin-top: 38px; display:flex; gap:10px; flex-wrap: wrap; }
+  .tag{
+    font-family:'JetBrains Mono'; font-size: 12px; color: var(--accent-2);
+    border: 1px solid var(--line); background: var(--bg-panel); padding: 6px 12px; border-radius: 6px;
+  }
+
+  /* ---------- SECTION ---------- */
+  section{ padding: 70px 0; border-top: 1px solid var(--line); }
+  .section-label{
+    font-family:'JetBrains Mono'; font-size: 12px; color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .section-label::before{ content:"# "; color: var(--text-dim); }
+  h2{ font-size: clamp(24px, 3.2vw, 32px); font-weight: 700; max-width: 600px; }
+  .section-sub{ margin-top: 12px; color: var(--text-dim); font-size: 15px; max-width: 560px; }
+
+  /* ---------- ABOUT ---------- */
+  .about-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items:start; }
+  .about-grid p{ color: var(--text-dim); font-size: 15px; }
+  .about-grid p + p{ margin-top: 14px; }
+  .code-block{
+    background: var(--bg-panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px;
+    font-family:'JetBrains Mono'; font-size: 12.5px; color: var(--text-dim); line-height: 1.8;
+  }
+  .code-block .k{ color: var(--accent-2); }
+  .code-block .v{ color: var(--accent); }
+
+  /* ---------- PIPELINE ---------- */
+  .pipeline{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .agent-card{
+    background: var(--bg-panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 18px; transition: border-color .2s ease, transform .2s ease;
+  }
+  .agent-card:hover{ border-color: var(--accent); transform: translateY(-3px); }
+  .agent-card .top-row{ display:flex; justify-content: space-between; align-items:center; margin-bottom: 14px; }
+  .agent-card .num{ font-family:'JetBrains Mono'; font-size: 18px; font-weight:700; color: var(--accent); }
+  .agent-card .tag-sm{
+    font-family:'JetBrains Mono'; font-size: 9px; color: var(--text-dim);
+    border: 1px solid var(--line); padding: 2px 7px; border-radius: 4px;
+  }
+  .agent-card h3{ font-size: 14.5px; font-weight: 700; margin-bottom: 8px; }
+  .agent-card p{ font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+
+  /* ---------- MEMORY ---------- */
+  .memory-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .memory-card{
+    background: var(--bg-panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px;
+  }
+  .memory-card h3{ font-size: 15.5px; font-weight: 700; margin-bottom: 8px; color: var(--accent); }
+  .memory-card p{ font-size: 13.5px; color: var(--text-dim); }
+  .memory-card code{
+    display:block; margin-top: 14px; font-family:'JetBrains Mono'; font-size: 12px;
+    color: var(--accent-2); background: var(--bg); padding: 10px 12px; border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+
+  /* ---------- FEATURES ---------- */
+  .feature-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .feature{
+    background: var(--bg-panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px;
+    transition: border-color .2s ease;
+  }
+  .feature:hover{ border-color: var(--accent); }
+  .feature h3{ font-size: 14.5px; font-weight: 700; margin-bottom: 8px; font-family:'JetBrains Mono'; }
+  .feature h3::before{ content:"▸ "; color: var(--accent); }
+  .feature p{ font-size: 13px; color: var(--text-dim); }
+
+  /* ---------- LINKS ---------- */
+  .links-grid{ display:flex; gap: 14px; flex-wrap: wrap; }
+  .link-card{
+    flex:1; min-width: 250px; background: var(--bg-panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 24px; text-decoration:none; color: var(--text);
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .link-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
+  .link-card .label{ font-family:'JetBrains Mono'; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .link-card .title{ font-size: 16px; font-weight: 700; margin-top: 8px; color: var(--accent); }
+  .link-card .desc{ font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
+  footer{ border-top: 1px solid var(--line); padding: 26px 0; text-align:center; }
+  footer p{ font-family:'JetBrains Mono'; font-size: 11.5px; color: var(--text-dim); }
+  footer a{ color: var(--accent); text-decoration:none; }
+
+  @media (max-width: 800px){
+    .about-grid{ grid-template-columns: 1fr; }
+    .pipeline{ grid-template-columns: 1fr 1fr; }
+    .feature-grid{ grid-template-columns: 1fr; }
+    .memory-grid{ grid-template-columns: 1fr; }
+    .nav-links{ display:none; }
+  }
+  @media (max-width: 480px){
+    .pipeline{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="wrap">
+    <div class="dots"><span></span><span></span><span></span></div>
+    <div class="filename">rag_book_assistant.py</div>
+  </div>
+</div>
+
+<header>
+  <div class="wrap nav">
+    <div class="brand"><span class="bracket">&lt;</span>RAG Book Assistant<span class="bracket">/&gt;</span></div>
+    <div class="nav-links">
+      <a href="#about">about</a>
+      <a href="#pipeline">pipeline</a>
+      <a href="#memory">memory</a>
+      <a href="#features">features</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+
+    <h1>Upload a PDF. Get a <span class="accent-text">grounded</span> research assistant.</h1>
+    <p class="lede">RAG Book Assistant chunks, embeds, and stores any document in a vector database — then answers your questions with retrieved context and full conversational memory.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://huggingface.co/spaces/prudhvi28x/RAG-Book-Assistant" target="_blank">▶ launch_demo</a>
+      <a class="btn btn-secondary" href="https://prudhvikakkunuri.github.io/RAG-Book-Assistant/" target="_blank">view_source</a>
+    </div>
+    <div class="stack-row">
+      <span class="tag">LangChain</span>
+      <span class="tag">Mistral AI</span>
+      <span class="tag">ChromaDB</span>
+      <span class="tag">Streamlit</span>
+      <span class="tag">Python</span>
+    </div>
+  </div>
+</section>
+
+<section id="about">
+  <div class="wrap">
+    <div class="section-label">about</div>
+    <h2>Grounded answers, not guesses</h2>
+    <div class="about-grid" style="margin-top: 24px;">
+      <div>
+        <p>Large language models are great at language, not at knowing the contents of your specific PDF. RAG Book Assistant closes that gap by retrieving the most relevant chunks of your document before the model ever generates an answer.</p>
+        <p>If the answer genuinely isn't in the document, the assistant says so explicitly instead of making something up.</p>
+      </div>
+      <div class="code-block">
+        <div><span class="k">vector_store</span> = <span class="v">"ChromaDB"</span></div>
+        <div><span class="k">embeddings</span> = <span class="v">"Mistral AI"</span></div>
+        <div><span class="k">retrieval</span> = <span class="v">"MMR search"</span></div>
+        <div><span class="k">memory_window</span> = <span class="v">6</span></div>
+        <div><span class="k">interface</span> = <span class="v">"Streamlit"</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="wrap">
+    <div class="section-label">how it works</div>
+    <h2>From PDF to grounded answer</h2>
+    <p class="section-sub">Each stage prepares the document a little more before the model ever sees a question.</p>
+    <div class="pipeline" style="margin-top: 30px;">
+      <div class="agent-card">
+        <div class="top-row"><div class="num">01</div><div class="tag-sm">chunk</div></div>
+        <h3>Document loading</h3>
+        <p>Loads the uploaded PDF and splits it into overlapping chunks for better context continuity.</p>
+      </div>
+      <div class="agent-card">
+        <div class="top-row"><div class="num">02</div><div class="tag-sm">embed</div></div>
+        <h3>Embedding</h3>
+        <p>Converts each chunk into a vector using Mistral AI embeddings to capture its meaning.</p>
+      </div>
+      <div class="agent-card">
+        <div class="top-row"><div class="num">03</div><div class="tag-sm">store</div></div>
+        <h3>ChromaDB storage</h3>
+        <p>Persists all chunk embeddings in a local Chroma vector database for fast similarity search.</p>
+      </div>
+      <div class="agent-card">
+        <div class="top-row"><div class="num">04</div><div class="tag-sm">answer</div></div>
+        <h3>Retrieval + generation</h3>
+        <p>Pulls the most relevant chunks via MMR search and feeds them to Mistral to generate the answer.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="memory">
+  <div class="wrap">
+    <div class="section-label">what makes this different</div>
+    <h2>It remembers the conversation</h2>
+    <p class="section-sub">Most basic RAG demos treat every question in isolation. This one doesn't.</p>
+    <div class="memory-grid" style="margin-top: 30px;">
+      <div class="memory-card">
+        <h3>Rolling conversation memory</h3>
+        <p>The last 6 messages are tracked in session state and passed into the prompt alongside the retrieved context, so follow-up questions stay coherent.</p>
+        <code>history += f"{'{'}role{'}'}: {'{'}content{'}'}\n"</code>
+      </div>
+      <div class="memory-card">
+        <h3>Persistent vector database</h3>
+        <p>Document embeddings are stored in ChromaDB with a persistent directory, so the knowledge base survives across sessions instead of rebuilding every time.</p>
+        <code>Chroma(persist_directory="chroma_db")</code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="section-label">capabilities</div>
+    <h2>What it does</h2>
+    <div class="feature-grid" style="margin-top: 30px;">
+      <div class="feature">
+        <h3>PDF upload & parsing</h3>
+        <p>Accepts any PDF, loads it directly, and prepares it for chunking without leaving the browser.</p>
+      </div>
+      <div class="feature">
+        <h3>MMR-based retrieval</h3>
+        <p>Uses Maximal Marginal Relevance search to fetch diverse, relevant chunks instead of redundant ones.</p>
+      </div>
+      <div class="feature">
+        <h3>Context-aware chat</h3>
+        <p>Combines retrieved document context with recent chat history so answers stay relevant to the ongoing thread.</p>
+      </div>
+      <div class="feature">
+        <h3>Custom chat UI</h3>
+        <p>Hand-styled chat bubbles in Streamlit, with user and assistant messages visually distinguished.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="links" style="border-bottom:none;">
+  <div class="wrap">
+    <div class="section-label">explore</div>
+    <h2>Try it or read the code</h2>
+    <div class="links-grid" style="margin-top: 26px;">
+      <a class="link-card" href="https://huggingface.co/spaces/prudhvi28x/RAG-Book-Assistant" target="_blank">
+        <div class="label">live_demo</div>
+        <div class="title">Hugging Face Spaces →</div>
+        <div class="desc">Upload a PDF and chat with it directly in your browser.</div>
+      </a>
+      <a class="link-card" href="https://github.com/prudhvikakkunuri" target="_blank">
+        <div class="label">source_code</div>
+        <div class="title">GitHub Repository →</div>
+        <div class="desc">See the full RAG pipeline, embedding setup, and memory implementation.</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>RAG Book Assistant · Built by Prudhvi · <a href="https://github.com/prudhvikakkunuri" target="_blank">GitHub</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
